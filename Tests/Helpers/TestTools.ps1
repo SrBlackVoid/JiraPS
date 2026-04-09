@@ -296,6 +296,272 @@ function Write-MockDebugInfo {
     }
 }
 
+#region Test Object Factory Functions
+# These functions create correctly-typed PSCustomObjects for use in test bodies and
+# mock scriptblocks. They replace direct Get-Jira* calls in test bodies, side-stepping
+# the Pester mock scoping issue where -ModuleName mocks only intercept calls from
+# within the module, not calls made from the test script scope.
+#
+# Usage in a test body:
+#   $issue = New-TestJiraIssue -Key 'TEST-1'
+#   $issue | Add-JiraIssueWorklog ...
+#
+# Usage in a mock body (available after InModuleScope JiraPS { . TestTools.ps1 }):
+#   Mock Get-JiraIssue -ModuleName JiraPS { New-TestJiraIssue -Key $Key }
+
+function Get-TestJiraIssue {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Issue object for use in tests.
+    .DESCRIPTION
+        Returns a correctly-typed PSCustomObject that can be used as test fixture data
+        or as a pipeline source to other cmdlets under test, without needing to call
+        the real Get-JiraIssue (which would require a live Jira connection or complex
+        module-scope mock chaining).
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Issue'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 41701,
+        [string]$Key = 'TEST-1',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl,
+        [string]$Summary = 'Test issue',
+        [array]$IssueLinks = @()
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/issue/$ID" }
+    [PSCustomObject]@{
+        PSTypeName = 'JiraPS.Issue'
+        ID         = $ID
+        Key        = $Key
+        RestUrl    = $RestUrl
+        Summary    = $Summary
+        IssueLinks = $IssueLinks
+    }
+}
+
+function Get-TestJiraFilter {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Filter object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Filter'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 1,
+        [string]$Name = 'Test Filter',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl,
+        [array]$FilterPermissions = @()
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/filter/$ID" }
+    [PSCustomObject]@{
+        PSTypeName        = 'JiraPS.Filter'
+        ID                = $ID
+        Name              = $Name
+        RestUrl           = $RestUrl
+        FilterPermissions = $FilterPermissions
+    }
+}
+
+function Get-TestJiraGroup {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Group object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Group'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [string]$Name = 'testGroup',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl,
+        [int]$Size = 0
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/group?groupname=$Name" }
+    [PSCustomObject]@{
+        PSTypeName = 'JiraPS.Group'
+        Name       = $Name
+        RestUrl    = $RestUrl
+        Size       = $Size
+    }
+}
+
+function Get-TestJiraUser {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.User object for use in tests.
+    .DESCRIPTION
+        Includes a ToString() script method returning Name, matching ConvertTo-JiraUser behavior.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.User'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [string]$Name = 'testUser',
+        [string]$AccountId = 'abc123def456',
+        [string]$DisplayName = 'Test User',
+        [string]$EmailAddress = 'testuser@example.com',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/user?username=$Name" }
+    $user = [PSCustomObject]@{
+        PSTypeName   = 'JiraPS.User'
+        Name         = $Name
+        AccountId    = $AccountId
+        DisplayName  = $DisplayName
+        EmailAddress = $EmailAddress
+        RestUrl      = $RestUrl
+    }
+    $user | Add-Member -MemberType ScriptMethod -Name 'ToString' -Force -Value { $this.Name }
+    $user
+}
+
+function Get-TestJiraVersion {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Version object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Version'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 1,
+        [string]$Name = 'v1.0',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl,
+        [string]$Description = '',
+        $Project = $null,
+        [bool]$Archived = $false,
+        [bool]$Released = $false
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/version/$ID" }
+    [PSCustomObject]@{
+        PSTypeName  = 'JiraPS.Version'
+        ID          = $ID
+        Name        = $Name
+        RestUrl     = $RestUrl
+        Description = $Description
+        Project     = $Project
+        Archived    = $Archived
+        Released    = $Released
+    }
+}
+
+function Get-TestJiraAttachment {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Attachment object for use in tests.
+    .DESCRIPTION
+        Property names match ConvertTo-JiraAttachment output: FileName, Content, MimeType, Self.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Attachment'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [string]$ID = '10013',
+        [string]$FileName = 'test.pdf',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$Self,
+        [string]$Content,
+        [string]$MimeType = 'application/pdf'
+    )
+    if (-not $Self) { $Self = "$JiraServer/rest/api/2/attachment/$ID" }
+    if (-not $Content) { $Content = "$JiraServer/secure/attachment/$ID/$FileName" }
+    [PSCustomObject]@{
+        PSTypeName = 'JiraPS.Attachment'
+        ID         = $ID
+        FileName   = $FileName
+        Self       = $Self
+        Content    = $Content
+        MimeType   = $MimeType
+    }
+}
+
+function Get-TestJiraFilterPermission {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.FilterPermission object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.FilterPermission'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 10000,
+        [string]$Type = 'global'
+    )
+    [PSCustomObject]@{
+        PSTypeName = 'JiraPS.FilterPermission'
+        ID         = $ID
+        Type       = $Type
+    }
+}
+
+function Get-TestJiraProject {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.Project object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.Project'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 10000,
+        [string]$Key = 'TEST',
+        [string]$Name = 'Test Project',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/project/$Key" }
+    [PSCustomObject]@{
+        PSTypeName = 'JiraPS.Project'
+        ID         = $ID
+        Key        = $Key
+        Name       = $Name
+        RestUrl    = $RestUrl
+    }
+}
+
+function Get-TestJiraIssueLinkType {
+    <#
+    .SYNOPSIS
+        Creates a minimal JiraPS.IssueLinkType object for use in tests.
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName 'JiraPS.IssueLinkType'
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [int]$ID = 1,
+        [string]$Name = 'Blocks',
+        [string]$InwardText = 'is blocked by',
+        [string]$OutwardText = 'blocks',
+        [string]$JiraServer = 'http://jiraserver.example.com',
+        [string]$RestUrl
+    )
+    if (-not $RestUrl) { $RestUrl = "$JiraServer/rest/api/2/issueLinkType/$ID" }
+    [PSCustomObject]@{
+        PSTypeName  = 'JiraPS.IssueLinkType'
+        ID          = $ID
+        Name        = $Name
+        InwardText  = $InwardText
+        OutwardText = $OutwardText
+        RestUrl     = $RestUrl
+    }
+}
+#endregion Test Object Factory Functions
+
 function Get-FileEncoding {
     <#
     .SYNOPSIS
