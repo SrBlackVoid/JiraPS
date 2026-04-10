@@ -1,24 +1,19 @@
 #requires -modules @{ ModuleName = "Pester"; ModuleVersion = "5.7"; MaximumVersion = "5.999" }
 
-BeforeDiscovery {
-    . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-    Initialize-TestEnvironment
-    $script:moduleToTest = Resolve-ModuleSource
-    Import-Module $script:moduleToTest -Force -ErrorAction Stop
-}
+Describe "Get-JiraIssueAttachmentFile" -Tag 'Unit' {
+    BeforeAll {
+        . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+        Initialize-TestEnvironment
+        $script:moduleToTest = Resolve-ModuleSource
+        Import-Module $script:moduleToTest -Force -ErrorAction Stop
+        # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
 
-InModuleScope JiraPS {
-    Describe "Get-JiraIssueAttachmentFile" -Tag 'Unit' {
-        BeforeAll {
-            . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-            # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
+        #region Definitions
+        $script:jiraServer = 'http://jiraserver.example.com'
+        $script:issueID = 41701
+        $script:issueKey = 'IT-3676'
 
-            #region Definitions
-            $script:jiraServer = 'http://jiraserver.example.com'
-            $script:issueID = 41701
-            $script:issueKey = 'IT-3676'
-
-            $script:attachments = @"
+        $script:attachments = @"
 [
     {
         "self": "$jiraServer/rest/api/2/attachment/10013",
@@ -62,74 +57,71 @@ InModuleScope JiraPS {
     }
 ]
 "@
-            #endregion Definitions
+        #endregion Definitions
 
-            #region Mocks
-            Mock Get-JiraIssueAttachment -ModuleName JiraPS {
-                Write-MockDebugInfo 'Get-JiraIssueAttachment'
-                $object = ConvertFrom-Json -InputObject $attachments
-                $object[0].PSObject.TypeNames.Insert(0, 'JiraPS.Attachment')
-                $object[1].PSObject.TypeNames.Insert(0, 'JiraPS.Attachment')
-                $object
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
-                $Method -eq 'Get' -and
-                $URI -like "$jiraServer/secure/attachment/*"
-            } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri', 'OutFile'
-            }
-
-            # Generic catch-all. This will throw an exception if we forgot to mock something.
-            Mock Invoke-JiraMethod -ModuleName JiraPS {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                throw "Unidentified call to Invoke-JiraMethod"
-            }
-            #endregion Mocks
+        #region Mocks
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
+            $Method -eq 'Get' -and
+            $URI -like "$jiraServer/secure/attachment/*"
+        } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri', 'OutFile'
         }
 
-        Describe "Input Validation" {
-            It 'only accepts JiraPS.Attachment as input' {
-                { Get-JiraIssueAttachmentFile -Attachment (Get-Date) } | Should -Throw -ExpectedMessage "*'Attachment'*"
-                { Get-JiraIssueAttachmentFile -Attachment (Get-ChildItem) } | Should -Throw -ExpectedMessage "*'Attachment'*"
-                { Get-JiraIssueAttachmentFile -Attachment @('foo', 'bar') } | Should -Throw -ExpectedMessage "*'Attachment'*"
-                { Get-JiraIssueAttachmentFile -Attachment (Get-JiraIssueAttachment -Issue "Foo") } | Should -Not -Throw
-            }
+        # Generic catch-all. This will throw an exception if we forgot to mock something.
+        Mock Invoke-JiraMethod -ModuleName JiraPS {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            throw "Unidentified call to Invoke-JiraMethod"
+        }
+        #endregion Mocks
+    }
 
-            It 'takes the issue input over the pipeline' {
-                { Get-JiraIssueAttachment -Issue "Foo" | Get-JiraIssueAttachmentFile } | Should -Not -Throw
-            }
+    Describe "Input Validation" {
+        It 'only accepts JiraPS.Attachment as input' {
+            { Get-JiraIssueAttachmentFile -Attachment (Get-Date) } | Should -Throw -ExpectedMessage "*'Attachment'*"
+            { Get-JiraIssueAttachmentFile -Attachment (Get-ChildItem) } | Should -Throw -ExpectedMessage "*'Attachment'*"
+            { Get-JiraIssueAttachmentFile -Attachment @('foo', 'bar') } | Should -Throw -ExpectedMessage "*'Attachment'*"
+            { Get-JiraIssueAttachmentFile -Attachment (Get-TestJiraAttachment -JiraServer $jiraServer) } | Should -Not -Throw
         }
 
-        Describe "Signature" {
-            Context "Parameter Types" {
-                # TODO: Add parameter type validation tests
-            }
+        It 'takes the issue input over the pipeline' {
+            { Get-TestJiraAttachment -JiraServer $jiraServer | Get-JiraIssueAttachmentFile } | Should -Not -Throw
+        }
+    }
 
-            Context "Mandatory Parameters" {}
-
-            Context "Default Values" {}
+    Describe "Signature" {
+        Context "Parameter Types" {
+            # TODO: Add parameter type validation tests
         }
 
-        Describe "Behavior" {
-            It 'uses Invoke-JiraMethod for saving to disk' {
-                Get-JiraIssueAttachment -Issue "Foo" | Get-JiraIssueAttachmentFile
-                Get-JiraIssueAttachment -Issue "Foo" | Get-JiraIssueAttachmentFile -Path "../"
+        Context "Mandatory Parameters" {}
 
-                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
-                    $OutFile -in @("foo.pdf", "bar.pdf")
-                } -Exactly 2
+        Context "Default Values" {}
+    }
 
-                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
-                    $OutFile -like "..*.pdf"
-                } -Exactly 2
-            }
+    Describe "Behavior" {
+        It 'uses Invoke-JiraMethod for saving to disk' {
+            @(
+                Get-TestJiraAttachment -ID 10013 -FileName 'foo.pdf' -JiraServer $jiraServer
+                Get-TestJiraAttachment -ID 10010 -FileName 'bar.pdf' -JiraServer $jiraServer
+            ) | Get-JiraIssueAttachmentFile
+            @(
+                Get-TestJiraAttachment -ID 10013 -FileName 'foo.pdf' -JiraServer $jiraServer
+                Get-TestJiraAttachment -ID 10010 -FileName 'bar.pdf' -JiraServer $jiraServer
+            ) | Get-JiraIssueAttachmentFile -Path "../"
+
+            Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
+                $OutFile -in @("foo.pdf", "bar.pdf")
+            } -Exactly 2
+
+            Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter {
+                $OutFile -like "..*.pdf"
+            } -Exactly 2
         }
+    }
 
-        Describe "Input Validation" {
-            Context "Type Validation - Positive Cases" {}
+    Describe "Input Validation" {
+        Context "Type Validation - Positive Cases" {}
 
-            Context "Type Validation - Negative Cases" {}
-        }
+        Context "Type Validation - Negative Cases" {}
     }
 }
