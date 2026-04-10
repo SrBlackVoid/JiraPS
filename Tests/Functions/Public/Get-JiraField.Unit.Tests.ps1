@@ -1,25 +1,18 @@
 #requires -modules @{ ModuleName = "Pester"; ModuleVersion = "5.7"; MaximumVersion = "5.999" }
 
-BeforeDiscovery {
-    . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+Describe "Get-JiraField" -Tag 'Unit' {
+    BeforeAll {
+        . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+        Initialize-TestEnvironment
+        $script:moduleToTest = Resolve-ModuleSource
+        Import-Module $script:moduleToTest -Force -ErrorAction Stop
+        # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
 
-    Initialize-TestEnvironment
-    $script:moduleToTest = Resolve-ModuleSource
+        #region Definitions
+        $script:jiraServer = 'http://jiraserver.example.com'
 
-    Import-Module $script:moduleToTest -Force -ErrorAction Stop
-}
-
-InModuleScope JiraPS {
-    Describe "Get-JiraField" -Tag 'Unit' {
-        BeforeAll {
-            . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-            # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
-
-            #region Definitions
-            $script:jiraServer = 'http://jiraserver.example.com'
-
-            # In my Jira instance, this returns 34 objects. I've stripped it down quite a bit for testing.
-            $script:restResult = @"
+        # In my Jira instance, this returns 34 objects. I've stripped it down quite a bit for testing.
+        $script:restResult = @"
 [
     {
         "id": "issuetype",
@@ -144,85 +137,84 @@ InModuleScope JiraPS {
     }
 ]
 "@
-            #endregion Definitions
+        #endregion Definitions
 
-            #region Mocks
-            Mock Get-JiraConfigServer -ModuleName JiraPS {
-                Write-MockDebugInfo 'Get-JiraConfigServer'
-                Write-Output $jiraServer
+        #region Mocks
+        Mock Get-JiraConfigServer -ModuleName JiraPS {
+            Write-MockDebugInfo 'Get-JiraConfigServer'
+            Write-Output $jiraServer
+        }
+
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $Uri -eq "$jiraServer/rest/api/2/field" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $restResult
+        }
+
+        #endregion Mocks
+    }
+
+    Describe "Signature" {
+        BeforeAll {
+            $script:command = Get-Command -Name Get-JiraField
+        }
+
+        Context "Parameter Types" {
+            It "has a parameter '<parameter>' of type '<type>'" -TestCases @(
+                @{ parameter = "Field"; type = "String[]" }
+                @{ parameter = "Credential"; type = "System.Management.Automation.PSCredential" }
+            ) {
+                $command | Should -HaveParameter $parameter
             }
+        }
 
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $Uri -eq "$jiraServer/rest/api/2/field" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $restResult
-            }
+        Context "Mandatory Parameters" {}
 
-            Mock ConvertTo-JiraField {
+        Context "Default Values" {}
+    }
+
+    Describe "Behavior" {
+        It "gets all fields in Jira if called with no parameters" {
+            $allResults = Get-JiraField
+            $allResults | Should -Not -BeNullOrEmpty
+            @($allResults).Count | Should -Be @((ConvertFrom-Json -InputObject $restResult)).Count
+
+            Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
+        }
+
+        It "gets a specified field if a field ID is provided" {
+            $oneResult = Get-JiraField -Field issuetype
+            $oneResult | Should -Not -BeNullOrEmpty
+            $oneResult.ID | Should -Be 'issuetype'
+            $oneResult.Name | Should -Be 'Issue Type'
+        }
+
+        It "gets a specified issue type if an issue type name is provided" {
+            $oneResult = Get-JiraField -Field 'Issue Type'
+            $oneResult | Should -Not -BeNullOrEmpty
+            $oneResult.ID | Should -Be 'issuetype'
+            $oneResult.Name | Should -Be 'Issue Type'
+        }
+
+        It "handles positional parameters correctly" {
+            $oneResult = Get-JiraField 'Issue Type'
+            $oneResult | Should -Not -BeNullOrEmpty
+            $oneResult.ID | Should -Be issuetype
+            $oneResult.Name | Should -Be 'Issue Type'
+        }
+
+        It "uses ConvertTo-JiraField to beautify output" {
+            Mock ConvertTo-JiraField -ModuleName JiraPS {
                 Write-MockDebugInfo 'ConvertTo-JiraField' 'InputObject'
                 $InputObject
             }
-            #endregion Mocks
+            Get-JiraField | Out-Null
+            Should -Invoke ConvertTo-JiraField -ModuleName JiraPS
         }
+    }
 
-        Describe "Signature" {
-            BeforeAll {
-                $script:command = Get-Command -Name Get-JiraField
-            }
+    Describe "Input Validation" {
+        Context "Type Validation - Positive Cases" {}
 
-            Context "Parameter Types" {
-                It "has a parameter '<parameter>' of type '<type>'" -TestCases @(
-                    @{ parameter = "Field"; type = "String[]" }
-                    @{ parameter = "Credential"; type = "System.Management.Automation.PSCredential" }
-                ) {
-                    $command | Should -HaveParameter $parameter
-                }
-            }
-
-            Context "Mandatory Parameters" {}
-
-            Context "Default Values" {}
-        }
-
-        Describe "Behavior" {
-            It "gets all fields in Jira if called with no parameters" {
-                $allResults = Get-JiraField
-                $allResults | Should -Not -BeNullOrEmpty
-                @($allResults).Count | Should -Be @((ConvertFrom-Json -InputObject $restResult)).Count
-
-                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
-            }
-
-            It "gets a specified field if a field ID is provided" {
-                $oneResult = Get-JiraField -Field issuetype
-                $oneResult | Should -Not -BeNullOrEmpty
-                $oneResult.ID | Should -Be 'issuetype'
-                $oneResult.Name | Should -Be 'Issue Type'
-            }
-
-            It "gets a specified issue type if an issue type name is provided" {
-                $oneResult = Get-JiraField -Field 'Issue Type'
-                $oneResult | Should -Not -BeNullOrEmpty
-                $oneResult.ID | Should -Be 'issuetype'
-                $oneResult.Name | Should -Be 'Issue Type'
-            }
-
-            It "handles positional parameters correctly" {
-                $oneResult = Get-JiraField 'Issue Type'
-                $oneResult | Should -Not -BeNullOrEmpty
-                $oneResult.ID | Should -Be issuetype
-                $oneResult.Name | Should -Be 'Issue Type'
-            }
-
-            It "uses ConvertTo-JiraField to beautify output" {
-                Get-JiraField | Out-Null
-                Should -Invoke ConvertTo-JiraField
-            }
-        }
-
-        Describe "Input Validation" {
-            Context "Type Validation - Positive Cases" {}
-
-            Context "Type Validation - Negative Cases" {}
-        }
+        Context "Type Validation - Negative Cases" {}
     }
 }

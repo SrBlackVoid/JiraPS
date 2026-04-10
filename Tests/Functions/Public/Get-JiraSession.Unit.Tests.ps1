@@ -1,19 +1,12 @@
 #requires -modules @{ ModuleName = "Pester"; ModuleVersion = "5.7"; MaximumVersion = "5.999" }
 
-BeforeDiscovery {
-    . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-
-    Initialize-TestEnvironment
-    $script:moduleToTest = Resolve-ModuleSource
-
-    Import-Module $script:moduleToTest -Force -ErrorAction Stop
-}
-
-InModuleScope JiraPS {
-    Describe "Get-JiraSession" -Tag 'Unit' {
-        BeforeAll {
-            . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-            # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
+Describe "Get-JiraSession" -Tag 'Unit' {
+    BeforeAll {
+        . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+        Initialize-TestEnvironment
+        $script:moduleToTest = Resolve-ModuleSource
+        Import-Module $script:moduleToTest -Force -ErrorAction Stop
+        # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
 
             #region Definitions
             #endregion Definitions
@@ -47,4 +40,3 @@ InModuleScope JiraPS {
             Context "Type Validation - Negative Cases" {}
         }
     }
-}

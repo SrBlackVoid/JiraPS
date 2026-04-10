@@ -1,24 +1,17 @@
 #requires -modules @{ ModuleName = "Pester"; ModuleVersion = "5.7"; MaximumVersion = "5.999" }
 
-BeforeDiscovery {
-    . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+Describe "Get-JiraServerInformation" -Tag 'Unit' {
+    BeforeAll {
+        . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+        Initialize-TestEnvironment
+        $script:moduleToTest = Resolve-ModuleSource
+        Import-Module $script:moduleToTest -Force -ErrorAction Stop
+        # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
 
-    Initialize-TestEnvironment
-    $script:moduleToTest = Resolve-ModuleSource
+        #region Definitions
+        $script:jiraServer = 'http://jiraserver.example.com'
 
-    Import-Module $script:moduleToTest -Force -ErrorAction Stop
-}
-
-InModuleScope JiraPS {
-    Describe "Get-JiraServerInformation" -Tag 'Unit' {
-        BeforeAll {
-            . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-            # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
-
-            #region Definitions
-            $script:jiraServer = 'http://jiraserver.example.com'
-
-            $script:restResult = @"
+        $script:restResult = @"
 {
     "baseUrl":"$jiraServer",
     "version":"1000.1323.0",
@@ -31,55 +24,54 @@ InModuleScope JiraPS {
     "serverTitle":"JIRA"
 }
 "@
-            #endregion Definitions
+        #endregion Definitions
 
-            #region Mocks
-            Mock Get-JiraConfigServer -ModuleName JiraPS {
-                Write-MockDebugInfo 'Get-JiraConfigServer'
-                Write-Output $jiraServer
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -eq "$jiraServer/rest/api/2/serverInfo" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $restResult
-            }
-
-            # Generic catch-all. This will throw an exception if we forgot to mock something.
-            Mock Invoke-JiraMethod -ModuleName JiraPS {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                throw "Unidentified call to Invoke-JiraMethod"
-            }
-            #endregion Mocks
+        #region Mocks
+        Mock Get-JiraConfigServer -ModuleName JiraPS {
+            Write-MockDebugInfo 'Get-JiraConfigServer'
+            Write-Output $jiraServer
         }
 
-        Describe "Signature" {
-            Context "Parameter Types" {
-                # TODO: Add parameter type validation tests
-            }
-
-            Context "Mandatory Parameters" {}
-
-            Context "Default Values" {}
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -eq "$jiraServer/rest/api/2/serverInfo" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $restResult
         }
 
-        Describe "Behavior" {
-            It "returns the server information" {
-                $allResults = Get-JiraServerInformation
-                $allResults | Should -Not -BeNullOrEmpty
-                @($allResults).Count | Should -Be @(ConvertFrom-Json -InputObject $restResult).Count
-            }
+        # Generic catch-all. This will throw an exception if we forgot to mock something.
+        Mock Invoke-JiraMethod -ModuleName JiraPS {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            throw "Unidentified call to Invoke-JiraMethod"
+        }
+        #endregion Mocks
+    }
 
-            It "answers to the alias 'Get-JiraServerInfo'" {
-                $thisAlias = (Get-Alias -Name "Get-JiraServerInfo")
-                $thisAlias.ResolvedCommandName | Should -Be "Get-JiraServerInformation"
-                $thisAlias.ModuleName | Should -Be "JiraPS"
-            }
+    Describe "Signature" {
+        Context "Parameter Types" {
+            # TODO: Add parameter type validation tests
         }
 
-        Describe "Input Validation" {
-            Context "Type Validation - Positive Cases" {}
+        Context "Mandatory Parameters" {}
 
-            Context "Type Validation - Negative Cases" {}
+        Context "Default Values" {}
+    }
+
+    Describe "Behavior" {
+        It "returns the server information" {
+            $allResults = Get-JiraServerInformation
+            $allResults | Should -Not -BeNullOrEmpty
+            @($allResults).Count | Should -Be @(ConvertFrom-Json -InputObject $restResult).Count
         }
+
+        It "answers to the alias 'Get-JiraServerInfo'" {
+            $thisAlias = (Get-Alias -Name "Get-JiraServerInfo")
+            $thisAlias.ResolvedCommandName | Should -Be "Get-JiraServerInformation"
+            $thisAlias.ModuleName | Should -Be "JiraPS"
+        }
+    }
+
+    Describe "Input Validation" {
+        Context "Type Validation - Positive Cases" {}
+
+        Context "Type Validation - Negative Cases" {}
     }
 }

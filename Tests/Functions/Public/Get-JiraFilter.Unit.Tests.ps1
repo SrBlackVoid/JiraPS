@@ -1,22 +1,17 @@
 #requires -modules @{ ModuleName = "Pester"; ModuleVersion = "5.7"; MaximumVersion = "5.999" }
 
-BeforeDiscovery {
-    . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-    Initialize-TestEnvironment
-    $script:moduleToTest = Resolve-ModuleSource
-    Import-Module $script:moduleToTest -Force -ErrorAction Stop
-}
+Describe "Get-JiraFilter" -Tag 'Unit' {
+    BeforeAll {
+        . "$PSScriptRoot/../../Helpers/TestTools.ps1"
+        Initialize-TestEnvironment
+        $script:moduleToTest = Resolve-ModuleSource
+        Import-Module $script:moduleToTest -Force -ErrorAction Stop
+        # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
 
-InModuleScope JiraPS {
-    Describe "Get-JiraFilter" -Tag 'Unit' {
-        BeforeAll {
-            . "$PSScriptRoot/../../Helpers/TestTools.ps1"
-            # $VerbosePreference = 'Continue'  # Uncomment for mock debugging
+        #region Definitions
+        $script:jiraServer = "https://jira.example.com"
 
-            #region Definitions
-            $script:jiraServer = "https://jira.example.com"
-
-            $script:responseFilter = @"
+        $script:responseFilter = @"
 {
     "self": "$jiraServer/rest/api/2/filter/12844",
     "id": "12844",
@@ -61,7 +56,7 @@ InModuleScope JiraPS {
 }
 "@
 
-            $script:responseFilterCollection = @"
+        $script:responseFilterCollection = @"
 [
     {
         "self": "$jiraServer/rest/api/2/filter/13844",
@@ -86,122 +81,113 @@ InModuleScope JiraPS {
     }
 ]
 "@
-            #endregion Definitions
+        #endregion Definitions
 
-            #region Mocks
-            Mock Get-JiraConfigServer -ModuleName JiraPS {
-                Write-MockDebugInfo 'Get-JiraConfigServer'
-                $jiraServer
-            }
-
-            Mock ConvertTo-JiraFilter -ModuleName JiraPS {
-                Write-MockDebugInfo 'ConvertTo-JiraFilter'
-                foreach ($i in $InputObject) {
-                    $i.PSObject.TypeNames.Insert(0, 'JiraPS.Filter')
-                    $i
-                }
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/12345" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $responseFilter
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/67890" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $responseFilter
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/favourite" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $responseFilterCollection
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/*" } {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                ConvertFrom-Json $responseFilter
-            }
-
-            Mock Invoke-JiraMethod -ModuleName JiraPS {
-                Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
-                throw "Unidentified call to Invoke-JiraMethod"
-            }
-            #endregion Mocks
+        #region Mocks
+        Mock Get-JiraConfigServer -ModuleName JiraPS {
+            Write-MockDebugInfo 'Get-JiraConfigServer'
+            $jiraServer
         }
 
-        Describe "Signature" {
-            Context "Parameter Types" {
-                # TODO: Add parameter type validation tests
-            }
-
-            Context "Mandatory Parameters" {}
-
-            Context "Default Values" {}
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/12345" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $responseFilter
         }
 
-        Describe "Behavior" {
-            Context "Behavior testing" {
-                It "Queries JIRA for a filter with a given ID" {
-                    { Get-JiraFilter -Id 12345 } | Should -Not -Throw
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/12345' }
-                }
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/67890" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $responseFilter
+        }
 
-                It "Uses ConvertTo-JiraFilter to output a Filter object if JIRA returns data" {
-                    Mock Invoke-JiraMethod -ModuleName JiraPS { $true }
-                    Mock ConvertTo-JiraFilter -ModuleName JiraPS {}
-                    { Get-JiraFilter -Id 12345 } | Should -Not -Throw
-                    Should -Invoke ConvertTo-JiraFilter -ModuleName JiraPS
-                }
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/favourite" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $responseFilterCollection
+        }
 
-                It "Finds all favorite filters of the user" {
-                    { Get-JiraFilter -Favorite } | Should -Not -Throw
+        Mock Invoke-JiraMethod -ModuleName JiraPS -ParameterFilter { $Method -eq 'Get' -and $URI -like "$jiraServer/rest/api/*/filter/*" } {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            ConvertFrom-Json $responseFilter
+        }
 
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/favourite' }
-                }
+        Mock Invoke-JiraMethod -ModuleName JiraPS {
+            Write-MockDebugInfo 'Invoke-JiraMethod' 'Method', 'Uri'
+            throw "Unidentified call to Invoke-JiraMethod"
+        }
+        #endregion Mocks
+    }
+
+    Describe "Signature" {
+        Context "Parameter Types" {
+            # TODO: Add parameter type validation tests
+        }
+
+        Context "Mandatory Parameters" {}
+
+        Context "Default Values" {}
+    }
+
+    Describe "Behavior" {
+        Context "Behavior testing" {
+            It "Queries JIRA for a filter with a given ID" {
+                { Get-JiraFilter -Id 12345 } | Should -Not -Throw
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/12345' }
             }
 
-            Context "Input testing" {
-                BeforeAll {
-                    $script:sampleFilter = ConvertTo-JiraFilter (ConvertFrom-Json $responseFilter)
-                }
+            It "Uses ConvertTo-JiraFilter to output a Filter object if JIRA returns data" {
+                Mock Invoke-JiraMethod -ModuleName JiraPS { $true }
+                Mock ConvertTo-JiraFilter -ModuleName JiraPS {}
+                { Get-JiraFilter -Id 12345 } | Should -Not -Throw
+                Should -Invoke ConvertTo-JiraFilter -ModuleName JiraPS
+            }
 
-                It "Accepts a filter ID for the -Filter parameter" {
-                    { Get-JiraFilter -Id "12345" } | Should -Not -Throw
+            It "Finds all favorite filters of the user" {
+                { Get-JiraFilter -Favorite } | Should -Not -Throw
 
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
-                }
-
-                It "Accepts a filter ID without the -Filter parameter" {
-                    { Get-JiraFilter "12345" } | Should -Not -Throw
-
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
-                }
-
-                It "Accepts multiple filter IDs to the -Filter parameter" {
-                    { Get-JiraFilter -Id '12345', '67890' } | Should -Not -Throw
-
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/12345' }
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/67890' }
-                }
-
-                It "Accepts a JiraPS.Filter object to the InputObject parameter" {
-                    { Get-JiraFilter -InputObject $sampleFilter } | Should -Not -Throw
-
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*rest/api/*/filter/12844' }
-                }
-
-                It "Accepts a JiraPS.Filter object via pipeline" {
-                    { $sampleFilter | Get-JiraFilter } | Should -Not -Throw
-
-                    Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*rest/api/*/filter/12844' }
-                }
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/favourite' }
             }
         }
 
-        Describe "Input Validation" {
-            Context "Type Validation - Positive Cases" {}
+        Context "Input testing" {
+            BeforeAll {
+                $script:sampleFilter = Get-TestJiraFilter -Id 12844 -JiraServer $jiraServer
+            }
 
-            Context "Type Validation - Negative Cases" {}
+            It "Accepts a filter ID for the -Filter parameter" {
+                { Get-JiraFilter -Id "12345" } | Should -Not -Throw
+
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
+            }
+
+            It "Accepts a filter ID without the -Filter parameter" {
+                { Get-JiraFilter "12345" } | Should -Not -Throw
+
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1
+            }
+
+            It "Accepts multiple filter IDs to the -Filter parameter" {
+                { Get-JiraFilter -Id '12345', '67890' } | Should -Not -Throw
+
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/12345' }
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*/rest/api/*/filter/67890' }
+            }
+
+            It "Accepts a JiraPS.Filter object to the InputObject parameter" {
+                { Get-JiraFilter -InputObject $sampleFilter } | Should -Not -Throw
+
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*rest/api/*/filter/12844' }
+            }
+
+            It "Accepts a JiraPS.Filter object via pipeline" {
+                { $sampleFilter | Get-JiraFilter } | Should -Not -Throw
+
+                Should -Invoke Invoke-JiraMethod -ModuleName JiraPS -Exactly -Times 1 -ParameterFilter { $Method -eq 'Get' -and $URI -like '*rest/api/*/filter/12844' }
+            }
         }
+    }
+
+    Describe "Input Validation" {
+        Context "Type Validation - Positive Cases" {}
+
+        Context "Type Validation - Negative Cases" {}
     }
 }
